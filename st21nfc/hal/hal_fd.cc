@@ -18,7 +18,7 @@
  ******************************************************************************/
 #define LOG_TAG "NfcHalFd"
 #include "hal_fd.h"
-#include <cutils/properties.h>
+#include <android-base/properties.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <hardware/nfc.h>
@@ -187,16 +187,41 @@ int hal_fd_init() {
     strcpy(fwBinName, "/st21nfc_fw.bin");
   }
 
-  if (!GetStrValue(NAME_STNFC_FW_CONF_NAME, (char *)fwConfName,
-                   sizeof(fwConfName))) {
-    STLOG_HAL_D(
-        "%s - FW config file name not found in conf. use default name "
-        "/st21nfc_conf.bin \n", __func__);
-    strcpy(fwConfName, "/st21nfc_conf.bin");
+  bool multiSimFwConfig =
+      android::base::GetBoolProperty("persist.vendor.nfc.st.multisim_fw_config", false);
+  if (multiSimFwConfig) {
+    std::string msim =
+        android::base::GetProperty("persist.vendor.radio.multisim.config", "ssss");
+    if (msim == "ssss") {
+      if (!GetStrValue(NAME_STNFC_FW_CONF_NAME_SS, (char *)fwConfName,
+                       sizeof(fwConfName))) {
+        STLOG_HAL_D(
+            "%s - Single SIM FW config file name not found in conf. use default name "
+            "/vendor/firmware/st21nfc_conf.bin \n", __func__);
+        strcpy(fwConfName, "/vendor/firmware/st21nfc_conf.bin");
+      }
+    } else {
+      if (!GetStrValue(NAME_STNFC_FW_CONF_NAME_DS, (char *)fwConfName,
+                       sizeof(fwConfName))) {
+        STLOG_HAL_D(
+            "%s - Multi SIM FW config file name not found in conf. use default name "
+            "/vendor/firmware/st21nfc_conf.bin \n", __func__);
+        strcpy(fwConfName, "/vendor/firmware/st21nfc_conf.bin");
+      }
+    }
+  } else {
+    if (!GetStrValue(NAME_STNFC_FW_CONF_NAME, (char *)fwConfName,
+                     sizeof(fwConfName))) {
+      STLOG_HAL_D(
+          "%s - FW config file name not found in conf. use default name "
+          "/st21nfc_conf.bin \n", __func__);
+      strcpy(fwConfName, "/st21nfc_conf.bin");
+    }
+
+    strcpy(ConfPath, FwPath);
   }
 
   // Getting information about FW patch, if any
-  strcpy(ConfPath, FwPath);
   strncat(FwPath, fwBinName, sizeof(FwPath) - strlen(FwPath) - 1);
   strncat(ConfPath, fwConfName, sizeof(ConfPath) - strlen(ConfPath) - 1);
   STLOG_HAL_D("%s - FW update binary file = %s", __func__, FwPath);
