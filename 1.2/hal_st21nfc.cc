@@ -32,7 +32,11 @@
 #include "halcore.h"
 #include "st21nfc_dev.h"
 
+#if defined(ST_LIB_32)
+#define VENDOR_LIB_PATH "/vendor/lib/"
+#else
 #define VENDOR_LIB_PATH "/vendor/lib64/"
+#endif
 #define VENDOR_LIB_EXT ".so"
 
 extern void HalCoreCallback(void* context, uint32_t event, const void* d,

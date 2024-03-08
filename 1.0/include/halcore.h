@@ -42,8 +42,8 @@
 #define HAL_FLAG_NO_DEBUG 0 /* disable debug output */
 #define HAL_FLAG_DEBUG 1    /* enable debug output */
 
-bool halTraceMask;
-pthread_mutex_t debugOutputSem;
+extern bool halTraceMask;
+extern pthread_mutex_t debugOutputSem;
 
 #ifdef ANDROID
 #include <android/log.h>

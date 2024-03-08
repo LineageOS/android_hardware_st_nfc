@@ -52,6 +52,7 @@ cc_library_shared {
         "include",
         "gki/ulinux",
     ],
+
     shared_libs: [
         "libbase",
         "libcutils",
@@ -61,4 +62,10 @@ cc_library_shared {
         "liblog",
         "libutils",
     ],
+
+    static_libs: [
+        "android_nfc_flags_aconfig_c_lib",
+        "server_configurable_flags",
+    ],
+
 }

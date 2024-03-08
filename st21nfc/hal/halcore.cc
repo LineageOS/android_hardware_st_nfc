@@ -35,6 +35,8 @@ extern void DispHal(const char* title, const void* data, size_t length);
 
 extern uint32_t ScrProtocolTraceFlag;  // = SCR_PROTO_TRACE_ALL;
 
+extern "C" { bool android_nfc_nfc_observe_mode_st_shim(); }
+
 // HAL WRAPPER
 static void HalStopTimer(HalInstance* inst);
 static bool rf_deactivate_delay;
@@ -102,13 +104,32 @@ void HalCoreCallback(void* context, uint32_t event, const void* d,
         rf_deactivate_delay = false;
       }
       STLOG_HAL_V("!! got event HAL_EVENT_DSWRITE for %zu bytes\n", length);
-      DispHal("TX DATA", (data), length);
 
       // Send write command to IO thread
       cmd = 'W';
       I2cWriteCmd(&cmd, sizeof(cmd));
-      I2cWriteCmd((const uint8_t*)&length, sizeof(length));
-      I2cWriteCmd(data, length);
+
+      if (android_nfc_nfc_observe_mode_st_shim() && length == 5 &&
+        data[0] == ((NCI_MT_CMD << NCI_MT_SHIFT) | NCI_GID_PROP) &&
+        data[1] == NCI_MSG_PROP_ANDROID &&
+        data[2] == NCI_ANDROID_PASSIVE_OBSERVER_PARAM_SIZE &&
+        data[3]  == NCI_ANDROID_PASSIVE_OBSERVER) {
+        const uint8_t msg[7] = {(NCI_MT_CMD << NCI_MT_SHIFT) | NCI_GID_CORE,
+          NCI_MSG_CORE_SET_CONFIG,
+          0x04 /* Length*/,
+          0x01 /* One param */,
+          0xa3 /* RF_DONT_ANSWER_PASSIVE_LISTEN */,
+          0x01 /* data len*/,
+          data[4] /* enable or disable */};
+        size_t msg_len = 7;
+        DispHal("TX DATA", (msg), msg_len);
+        I2cWriteCmd((const uint8_t*)&msg_len, sizeof(msg_len));
+        I2cWriteCmd(msg, msg_len);
+      } else {
+        DispHal("TX DATA", (data), length);
+        I2cWriteCmd((const uint8_t*)&length, sizeof(length));
+        I2cWriteCmd(data, length);
+      }
       break;
 
     case HAL_EVENT_DATAIND:

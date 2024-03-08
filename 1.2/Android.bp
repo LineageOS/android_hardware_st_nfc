@@ -45,4 +45,8 @@ cc_binary {
         "android.hardware.nfc@1.2",
         "libhidlbase",
     ],
+
+    arch: {
+        arm: { cflags: ["-DST_LIB_32"] },
+    }
 }

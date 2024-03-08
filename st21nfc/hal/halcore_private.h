@@ -65,6 +65,24 @@
 #define HAL_SLEEP_TIMER 0
 #define HAL_SLEEP_TIMER_DURATION 500 /* ordinary t1 timeout to resent data */
 
+#define NCI_MT_SHIFT 5
+#define NCI_MT_CMD 1 /* (NCI_MT_CMD << NCI_MT_SHIFT) = 0x20 */
+
+#define NCI_MSG_CORE_SET_CONFIG 2
+
+#define NCI_GID_CORE 0x00      /* 0000b NCI Core group */
+#define NCI_GID_PROP 0x0F      /* 1111b Proprietary */
+
+#define NCI_MSG_PROP_ANDROID 0x0C
+
+#define NCI_ANDROID_SIGNAL_STRENGTH_NTF 0x01
+#define NCI_ANDROID_FIELD_CHANGE_NTF 0x02
+#define NCI_ANDROID_POLLING_FRAME_NTF 0x03
+
+#define NCI_ANDROID_PASSIVE_OBSERVER 0x2
+
+#define NCI_ANDROID_PASSIVE_OBSERVER_PARAM_SIZE 0x2
+
 typedef struct tagHalBuffer {
   uint8_t data[MAX_BUFFER_SIZE];
   size_t length;

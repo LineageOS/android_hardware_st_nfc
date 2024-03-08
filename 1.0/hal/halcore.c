@@ -27,6 +27,8 @@
 #include <pthread.h>
 #include <semaphore.h>
 
+pthread_mutex_t debugOutputSem = PTHREAD_MUTEX_INITIALIZER;
+bool halTraceMask = true;
 extern int I2cWriteCmd(const uint8_t* x, size_t len);
 extern void DispHal(const char* title, const void* data, size_t length);
 

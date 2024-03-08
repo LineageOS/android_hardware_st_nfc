@@ -51,6 +51,8 @@
 
 #define LINUX_DBGBUFFER_SIZE 300
 
+extern "C" { bool android_nfc_nfc_read_polling_loop_st_shim(); }
+
 static int fidI2c = 0;
 static int cmdPipe[2] = {0, 0};
 static int notifyResetRequest = 0;
@@ -75,6 +77,126 @@ static int SetToRecoveryMode(int fid);
 static int i2cRead(int fid, uint8_t* pvBuffer, int length);
 static int i2cGetGPIOState(int fid);
 static int i2cWrite(int fd, const uint8_t* pvBuffer, int length);
+
+static const int T_CERx  = 0x09;
+static const int T_fieldOn  = 0x10;
+static const int T_fieldOff  = 0x11;
+static const int T_CERxError  = 0x19;
+
+static const unsigned char PROPRIETARY_GID = 0x6F;
+static const unsigned char ANDROID_OID = 0x0C;
+static const unsigned char TYPE_REMOTE_FIELD = 0x00;
+static const unsigned char TYPE_REQA = 0x01;
+static const unsigned char TYPE_REQB = 0x02;
+static const unsigned char TYPE_REQF = 0x03;
+static const unsigned char TYPE_UNKNOWN = 0x07;
+
+
+typedef union timestamp_bytes {
+  unsigned char ts1;
+  unsigned char ts2;
+  unsigned char ts3;
+  unsigned char ts4;
+} timestamp_bytes;
+
+void sendFieldChange(HALHANDLE hHAL, timestamp_bytes timestamp, bool on) {
+  unsigned char value_len = 0x06;
+  unsigned char msg[10] = {PROPRIETARY_GID, ANDROID_OID, TYPE_REMOTE_FIELD,
+                            value_len, timestamp.ts1, timestamp.ts2, timestamp.ts3, timestamp.ts4,
+                            0xFF /* no gain data */, static_cast<unsigned char>(on ? 0x01 : 0x00)};
+  HalSendUpstream(hHAL, msg, sizeof(msg));
+}
+
+void sendKnownPollingLoopFrame(HALHANDLE hHAL, char type, timestamp_bytes timestamp, unsigned char gain) {
+  unsigned char value_len = 0x05;
+  unsigned char type_code;
+  switch (type) {
+    case 'A':
+      type_code = TYPE_REQA;
+      break;
+    case 'B':
+      type_code = TYPE_REQB;
+      break;
+    case 'F':
+      type_code = TYPE_REQF;
+      break;
+    default:
+      STLOG_HAL_D("VSLogNFC unknown frame type in known frame");
+      return;
+  }
+  unsigned char msg[9] = {PROPRIETARY_GID, ANDROID_OID, type_code, value_len,
+                          timestamp.ts1, timestamp.ts2, timestamp.ts3, timestamp.ts4, gain};
+  HalSendUpstream(hHAL, msg, sizeof(msg));
+}
+
+void sendUnknownPollingLoopFrame(HALHANDLE hHAL, timestamp_bytes timestamp, unsigned char gain,
+                                 unsigned char* buffer, unsigned char data_len) {
+  size_t header_len = 9;
+  size_t msg_len = header_len + data_len;
+  unsigned char value_len = data_len + 5;
+  unsigned char msg_header[9] = {PROPRIETARY_GID, ANDROID_OID, TYPE_UNKNOWN, value_len,
+                                 timestamp.ts1, timestamp.ts2, timestamp.ts3, timestamp.ts4, gain};
+  unsigned char* msg_buffer = (unsigned char*)malloc(msg_len);
+  memcpy(msg_buffer, msg_header, header_len);
+  memcpy(msg_buffer + header_len, buffer, data_len);
+  HalSendUpstream(hHAL, msg_buffer, msg_len);
+  free(msg_buffer);
+}
+
+void handlePollingLoopData(HALHANDLE hHAL, int data_len,
+                           unsigned char* tlvBuffer) {
+  timestamp_bytes timestamp;
+  timestamp.ts1 = tlvBuffer[data_len - 4];
+  timestamp.ts2 = tlvBuffer[data_len - 3];
+  timestamp.ts3 = tlvBuffer[data_len - 2];
+  timestamp.ts4 = tlvBuffer[data_len - 1];
+
+  int t = tlvBuffer[0];
+  switch (t) {
+    case T_fieldOn:
+      sendFieldChange(hHAL, timestamp, true);
+      break;
+    case T_fieldOff:
+      sendFieldChange(hHAL, timestamp, false);
+      break;
+    case T_CERxError:
+    case T_CERx:
+    {
+      unsigned char gain;
+      if ((tlvBuffer[3] & 0x30) == 0x20) {
+        // ST54J
+        gain = (tlvBuffer[3] & 0xF0) >> 4;
+      } else {
+        // ST21
+        gain = tlvBuffer[3];
+      }
+      switch (tlvBuffer[2] & 0xF) {
+        case 0x1:
+          sendKnownPollingLoopFrame(hHAL, 'A', timestamp, gain);
+          break;
+        case 0x7:
+          sendKnownPollingLoopFrame(hHAL, 'B', timestamp, gain);
+          break;
+        case 0x9:
+          sendKnownPollingLoopFrame(hHAL, 'F', timestamp, gain);
+          break;
+        case 0x3:
+          sendUnknownPollingLoopFrame(hHAL, timestamp, gain, tlvBuffer + 4,
+                                      data_len - 4);
+        break;
+      }
+    }
+  }
+}
+
+void notifyPollingLoopFrames(HALHANDLE hHAL, unsigned char* buffer, int data_len) {
+  int current_tlv_length = 0;
+  for (int current_tlv_pos = 6;current_tlv_pos + current_tlv_length + 1 <= data_len; current_tlv_pos+= current_tlv_length) {
+    current_tlv_length = buffer[current_tlv_pos + 1] + 2;
+    unsigned char* tlvBuffer = buffer + current_tlv_pos;
+    handlePollingLoopData(hHAL, current_tlv_length, tlvBuffer);
+  }
+}
 
 /**************************************************************************************************
  *
@@ -170,6 +292,11 @@ static void* I2cWorkerThread(void* arg) {
             }
             if (bytesRead == remaining) {
               DispHal("RX DATA", buffer, 3 + bytesRead);
+              if (android_nfc_nfc_read_polling_loop_st_shim() &&
+                buffer[0] == 0x6f /* Proprietary NTF */ &&
+                buffer[1] == 0x02 /* VS Log */) {
+                notifyPollingLoopFrames(hHAL, buffer, 3 + bytesRead);
+              }
               HalSendUpstream(hHAL, buffer, 3 + bytesRead);
             } else {
               readOk = false;

@@ -134,7 +134,7 @@ int hal_wrapper_close(int call_cb, int nfc_mode) {
   mHalWrapperState = HAL_WRAPPER_STATE_CLOSING;
   // Send PROP_NFC_MODE_SET_CMD
   if (!HalSendDownstreamTimer(mHalHandle, propNfcModeSetCmdQb,
-                              sizeof(propNfcModeSetCmdQb), 40)) {
+                              sizeof(propNfcModeSetCmdQb), 100)) {
     STLOG_HAL_E("NFC-NCI HAL: %s  HalSendDownstreamTimer failed", __func__);
     return -1;
   }
@@ -161,10 +161,10 @@ void hal_wrapper_send_core_config_prop() {
       STLOG_HAL_V("%s - Enter", __func__);
       set_ready(0);
 
-      if (!HalSendDownstreamTimer(mHalHandle, ConfigBuffer, retlen, 500)) {
+      mHalWrapperState = HAL_WRAPPER_STATE_PROP_CONFIG;
+      if (!HalSendDownstreamTimer(mHalHandle, ConfigBuffer, retlen, 1000)) {
         STLOG_HAL_E("NFC-NCI HAL: %s  SendDownstream failed", __func__);
       }
-      mHalWrapperState = HAL_WRAPPER_STATE_PROP_CONFIG;
       wait_ready();
     }
     free(ConfigBuffer);
@@ -176,11 +176,11 @@ void hal_wrapper_send_vs_config() {
   STLOG_HAL_V("%s - Enter", __func__);
   set_ready(0);
 
+  mReadFwConfigDone = true;
   if (!HalSendDownstreamTimer(mHalHandle, nciPropGetFwDbgTracesConfig,
-                              sizeof(nciPropGetFwDbgTracesConfig), 500)) {
+                              sizeof(nciPropGetFwDbgTracesConfig), 1000)) {
     STLOG_HAL_E("%s - SendDownstream failed", __func__);
   }
-  mReadFwConfigDone = true;
   wait_ready();
 }
 
@@ -246,6 +246,7 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
             mHalWrapperCallback(HAL_NFC_OPEN_CPLT_EVT, HAL_NFC_STATUS_FAILED);
             I2cCloseLayer();
           } else {
+            mHalWrapperState = HAL_WRAPPER_STATE_UPDATE;
             if (((p_data[3] == 0x01) && (p_data[8] == HW_ST54L)) ||
                 ((p_data[2] == 0x41) && (p_data[3] == 0xA2))) {  // ST54L
               FwUpdateHandler(mHalHandle, data_len, p_data);
@@ -258,7 +259,6 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
                 STLOG_HAL_E("%s - SendDownstream failed", __func__);
               }
             }
-            mHalWrapperState = HAL_WRAPPER_STATE_UPDATE;
           }
         } else if (mFwUpdateTaskMask == 0 || mRetryFwDwl == 0) {
           STLOG_HAL_V("%s - Proceeding with normal startup", __func__);
@@ -312,12 +312,12 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
       } else if ((p_data[0] == 0x60) && (p_data[1] == 0x06)) {
         STLOG_HAL_V("%s - Sending PROP_NFC_MODE_SET_CMD", __func__);
         // Send PROP_NFC_MODE_SET_CMD(ON)
+        mHalWrapperState = HAL_WRAPPER_STATE_NFC_ENABLE_ON;
         if (!HalSendDownstreamTimer(mHalHandle, propNfcModeSetCmdOn,
-                                    sizeof(propNfcModeSetCmdOn), 100)) {
+                                    sizeof(propNfcModeSetCmdOn), 500)) {
           STLOG_HAL_E("NFC-NCI HAL: %s  HalSendDownstreamTimer failed",
                       __func__);
         }
-        mHalWrapperState = HAL_WRAPPER_STATE_NFC_ENABLE_ON;
       } else {
         mHalWrapperDataCallback(data_len, p_data);
       }
@@ -521,8 +521,8 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
           (void)pthread_mutex_lock(&mutex_activerw);
           // start timer
           mTimerStarted = true;
-          HalSendDownstreamTimer(mHalHandle, 5000);
           mIsActiveRW = true;
+          HalSendDownstreamTimer(mHalHandle, 5000);
           (void)pthread_mutex_unlock(&mutex_activerw);
         } else if ((p_data[0] == 0x6f) && (p_data[1] == 0x06)) {
           (void)pthread_mutex_lock(&mutex_activerw);
@@ -556,6 +556,10 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
             HalSendDownstreamStopTimer(mHalHandle);
             mTimerStarted = false;
           }
+        } else if (p_data[0] == 0x60 && p_data[1] == 0x00) {
+          p_data[3] = 0x0;  // Only reset trigger that should be received in
+                            // HAL_WRAPPER_STATE_READY is unreocoverable error.
+
         } else if (data_len >= 4 && p_data[0] == 0x60 && p_data[1] == 0x07) {
           if (p_data[3] == 0xE1) {
             // Core Generic Error - Buffer Overflow Ntf - Restart all
