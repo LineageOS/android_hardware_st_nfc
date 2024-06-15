@@ -66,6 +66,8 @@ extern int hal_wrapper_close(int call_cb, int nfc_mode);
 
 extern void hal_wrapper_send_config();
 extern void hal_wrapper_factoryReset();
+extern void hal_wrapper_set_observer_mode(uint8_t enable);
+extern void hal_wrapper_get_observer_mode();
 
 /* Make sure to always post nfc_stack_callback_t in a separate thread.
 This prevents a possible deadlock in upper layer on some sequences.
@@ -321,7 +323,32 @@ int StNfc_hal_write(uint16_t data_len, const uint8_t* p_data) {
     (void)pthread_mutex_unlock(&hal_mtx);
     return ret;
   }
-  if (!HalSendDownstream(dev.hHAL, p_data, data_len)) {
+
+  uint8_t NCI_ANDROID_PASSIVE_OBSERVER_PREFIX[] = {0x2f, 0x0c, 0x02, 0x02};
+  uint8_t NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX[] = {0x2f, 0x0c, 0x01, 0x4};
+  if (data_len == 4 && !memcmp(p_data, NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX,
+                               sizeof(NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX))) {
+    uint8_t CORE_GET_CONFIG_OBSERVER[5] = {0x20, 0x03, 0x02, 0x01, 0xa3};
+    hal_wrapper_get_observer_mode();
+    if (!HalSendDownstream(dev.hHAL, CORE_GET_CONFIG_OBSERVER, 5)) {
+      STLOG_HAL_E("HAL st21nfc %s  SendDownstream failed", __func__);
+      (void)pthread_mutex_unlock(&hal_mtx);
+      return 0;
+    }
+  }
+
+  else if (data_len == 5 && !memcmp(p_data, NCI_ANDROID_PASSIVE_OBSERVER_PREFIX,
+                               sizeof(NCI_ANDROID_PASSIVE_OBSERVER_PREFIX))) {
+    uint8_t CORE_SET_CONFIG_OBSERVER[7] = {0x20, 0x02, 0x04, 0x01,
+                                           0xa3, 0x01, p_data[4]};
+
+    hal_wrapper_set_observer_mode(p_data[4]);
+    if (!HalSendDownstream(dev.hHAL, CORE_SET_CONFIG_OBSERVER, 7)) {
+      STLOG_HAL_E("HAL st21nfc %s  SendDownstream failed", __func__);
+      (void)pthread_mutex_unlock(&hal_mtx);
+      return 0;
+    }
+  } else if (!HalSendDownstream(dev.hHAL, p_data, data_len)) {
     STLOG_HAL_E("HAL st21nfc %s  SendDownstream failed", __func__);
     (void)pthread_mutex_unlock(&hal_mtx);
     return 0;

@@ -26,6 +26,7 @@
 
 #include "android_logmsg.h"
 #include "hal_fd.h"
+#include "hal_fwlog.h"
 #include "halcore.h"
 #include "st21nfc_dev.h"
 
@@ -62,6 +63,7 @@ static const uint8_t nciHeaderPropSetConfig[9] = {0x2F, 0x02, 0x98, 0x04, 0x00,
 static uint8_t nciPropEnableFwDbgTraces[256];
 static uint8_t nciPropGetFwDbgTracesConfig[] = {0x2F, 0x02, 0x05, 0x03,
                                                 0x00, 0x14, 0x01, 0x00};
+static uint8_t nciAndroidPassiveObserver[256];
 static bool isDebuggable;
 
 bool mReadFwConfigDone = false;
@@ -75,6 +77,8 @@ bool forceRecover = false;
 unsigned long hal_field_timer = 0;
 
 static bool sEnableFwLog = false;
+uint8_t mObserverMode = 0;
+bool mObserverRsp = false;
 
 void wait_ready() {
   pthread_mutex_lock(&mutex);
@@ -106,6 +110,9 @@ bool hal_wrapper_open(st21nfc_dev_t* dev, nfc_stack_callback_t* p_cback,
   mHciCreditLent = false;
   mReadFwConfigDone = false;
   mError_count = 0;
+
+  mObserverMode = 0;
+  mObserverRsp = false;
 
   mHalWrapperCallback = p_cback;
   mHalWrapperDataCallback = p_data_cback;
@@ -195,6 +202,13 @@ void hal_wrapper_factoryReset() {
   STLOG_HAL_V("%s - mfactoryReset = %d", __func__, mfactoryReset);
 }
 
+void hal_wrapper_set_observer_mode(uint8_t enable) {
+  mObserverMode = enable;
+  mObserverRsp = true;
+}
+void hal_wrapper_get_observer_mode() {
+  mObserverRsp = true;
+}
 void hal_wrapper_update_complete() {
   STLOG_HAL_V("%s ", __func__);
   mHalWrapperCallback(HAL_NFC_OPEN_CPLT_EVT, HAL_NFC_STATUS_OK);
@@ -207,7 +221,17 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
   unsigned long num = 0;
   unsigned long swp_log = 0;
   unsigned long rf_log = 0;
+  int mObserverLength = 0;
   int nciPropEnableFwDbgTraces_size = sizeof(nciPropEnableFwDbgTraces);
+
+  if (mObserverMode && (p_data[0] == 0x6f) && (p_data[1] == 0x02)) {
+    // Firmware logs must not be formatted before sending to upper layer.
+    if ((mObserverLength = notifyPollingLoopFrames(
+             p_data, data_len, nciAndroidPassiveObserver)) > 0) {
+      DispHal("RX DATA", (nciAndroidPassiveObserver), mObserverLength);
+      mHalWrapperDataCallback(mObserverLength, nciAndroidPassiveObserver);
+    }
+  }
 
   switch (mHalWrapperState) {
     case HAL_WRAPPER_STATE_CLOSED:  // 0
@@ -488,6 +512,32 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
 
     case HAL_WRAPPER_STATE_READY:  // 5
       STLOG_HAL_V("%s - mHalWrapperState = HAL_WRAPPER_STATE_READY", __func__);
+      if (mObserverRsp) {
+        if ((p_data[0] == 0x40) && (p_data[1] == 0x02)) {
+          uint8_t rsp_status = p_data[3];
+          mObserverRsp = false;
+          p_data[0] = 0x4f;
+          p_data[1] = 0x0c;
+          p_data[2] = 0x02;
+          p_data[3] = 0x02;
+          p_data[4] = rsp_status;
+          data_len = 0x5;
+        } else if ((p_data[0] == 0x40) && (p_data[1] == 0x03) && (data_len > 7)) {
+            uint8_t rsp_status = p_data[3];
+            mObserverRsp = false;
+            if (p_data[7] != mObserverMode) {
+                STLOG_HAL_E("mObserverMode got out of sync");
+                mObserverMode = p_data[7];
+            }
+            p_data[0] = 0x4f;
+            p_data[1] = 0x0c;
+            p_data[2] = 0x03;
+            p_data[3] = 0x04;
+            p_data[4] = rsp_status;
+            p_data[5] =  p_data[7];
+            data_len = 0x6;
+          }
+      }
       if (!((p_data[0] == 0x60) && (p_data[3] == 0xa0))) {
         if (mHciCreditLent && (p_data[0] == 0x60) && (p_data[1] == 0x06)) {
           if (p_data[4] == 0x01) {  // HCI connection
