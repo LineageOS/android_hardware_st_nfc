@@ -168,7 +168,6 @@ void hal_wrapper_send_core_config_prop() {
       STLOG_HAL_V("%s - Enter", __func__);
       set_ready(0);
 
-      mHalWrapperState = HAL_WRAPPER_STATE_PROP_CONFIG;
       if (!HalSendDownstreamTimer(mHalHandle, ConfigBuffer, retlen, 1000)) {
         STLOG_HAL_E("NFC-NCI HAL: %s  SendDownstream failed", __func__);
       }
@@ -182,7 +181,7 @@ void hal_wrapper_send_core_config_prop() {
 void hal_wrapper_send_vs_config() {
   STLOG_HAL_V("%s - Enter", __func__);
   set_ready(0);
-
+  mHalWrapperState = HAL_WRAPPER_STATE_PROP_CONFIG;
   mReadFwConfigDone = true;
   if (!HalSendDownstreamTimer(mHalHandle, nciPropGetFwDbgTracesConfig,
                               sizeof(nciPropGetFwDbgTracesConfig), 1000)) {
@@ -192,9 +191,9 @@ void hal_wrapper_send_vs_config() {
 }
 
 void hal_wrapper_send_config() {
-  hal_wrapper_send_core_config_prop();
-  mHalWrapperState = HAL_WRAPPER_STATE_PROP_CONFIG;
   hal_wrapper_send_vs_config();
+  mHalWrapperState = HAL_WRAPPER_STATE_PROP_CONFIG;
+  hal_wrapper_send_core_config_prop();
 }
 
 void hal_wrapper_factoryReset() {
@@ -394,9 +393,13 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
       // CORE_SET_CONFIG_RSP
       if ((p_data[0] == 0x40) && (p_data[1] == 0x02)) {
         HalSendDownstreamStopTimer(mHalHandle);
+        GetNumValue(NAME_STNFC_REMOTE_FIELD_TIMER, &hal_field_timer,
+                    sizeof(hal_field_timer));
+        STLOG_HAL_D("%s - hal_field_timer = %lu", __func__, hal_field_timer);
         set_ready(1);
-
-        STLOG_HAL_V("%s - Received config RSP, read FW dDBG config", __func__);
+        // Exit state, all processing done
+        mHalWrapperCallback(HAL_NFC_POST_INIT_CPLT_EVT, HAL_NFC_STATUS_OK);
+        mHalWrapperState = HAL_WRAPPER_STATE_READY;
       } else if (mHciCreditLent && (p_data[0] == 0x60) && (p_data[1] == 0x06)) {
         // CORE_CONN_CREDITS_NTF
         if (p_data[4] == 0x01) {  // HCI connection
@@ -418,7 +421,6 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
         if (mReadFwConfigDone == true) {
           mReadFwConfigDone = false;
           HalSendDownstreamStopTimer(mHalHandle);
-          set_ready(1);
           // NFC_STATUS_OK
           if (p_data[3] == 0x00) {
             bool confNeeded = false;
@@ -505,16 +507,16 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
                 }
                 mHalWrapperState = HAL_WRAPPER_STATE_APPLY_PROP_CONFIG;
                 break;
+              } else {
+                set_ready(1);
               }
             }
+          } else {
+            set_ready(1);
           }
+        } else {
+          set_ready(1);
         }
-        GetNumValue(NAME_STNFC_REMOTE_FIELD_TIMER, &hal_field_timer,
-                    sizeof(hal_field_timer));
-        STLOG_HAL_D("%s - hal_field_timer = %lu", __func__, hal_field_timer);
-        // Exit state, all processing done
-        mHalWrapperCallback(HAL_NFC_POST_INIT_CPLT_EVT, HAL_NFC_STATUS_OK);
-        mHalWrapperState = HAL_WRAPPER_STATE_READY;
       }
       break;
 
@@ -723,9 +725,7 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
       }
       // CORE_INIT_RSP
       else if ((p_data[0] == 0x40) && (p_data[1] == 0x01)) {
-        // Exit state, all processing done
-        mHalWrapperCallback(HAL_NFC_POST_INIT_CPLT_EVT, HAL_NFC_STATUS_OK);
-        mHalWrapperState = HAL_WRAPPER_STATE_READY;
+        set_ready(1);
       }
       break;
     case HAL_WRAPPER_STATE_RECOVERY:

@@ -307,6 +307,10 @@ void HalDestroy(HALHANDLE hHAL) {
 {
   // Send an NCI frame downstream. will
   HalInstance* inst = (HalInstance*)hHAL;
+  if(inst == nullptr) {
+    STLOG_HAL_E("HalInstance is null.");
+    return false;
+  }
 
   if ((size <= MAX_BUFFER_SIZE) && (size > 0)) {
     ThreadMesssage msg;
@@ -601,6 +605,10 @@ static bool HalDequeueThreadMessage(HalInstance* inst, ThreadMesssage* msg) {
  */
 static HalBuffer* HalAllocBuffer(HalInstance* inst) {
   HalBuffer* b;
+  if(inst == nullptr) {
+    STLOG_HAL_E("HalInstance is null.");
+    return nullptr;
+  }
 
   // Wait until we have a buffer resource
   sem_wait_nointr(&inst->bufferResourceSem);

@@ -402,7 +402,8 @@ int StNfc_hal_close(int nfc_mode_value) {
 
   std::string valueStr =
       android::base::GetProperty("persist.vendor.nfc.streset", "");
-  if (valueStr.length() > 0) {
+  // do a cold_reset when nfc is off
+  if (valueStr.length() > 0 && nfc_mode_value == 0) {
     stdll = dlopen(valueStr.c_str(), RTLD_NOW);
     if (!stdll) {
       valueStr = VENDOR_LIB_PATH + valueStr + VENDOR_LIB_EXT;

@@ -7,8 +7,34 @@ package {
     default_applicable_licenses: ["hardware_st_nfc_license"],
 }
 
+cc_defaults {
+    name: "android.hardware.nfc-service.st_default",
+    cflags: [
+        "-Wall",
+        "-Wextra",
+    ],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "libutils",
+        "libbinder_ndk",
+        "android.hardware.nfc-V1-ndk",
+        "nfc_nci.st21nfc.default",
+    ],
+    srcs: [
+        "Nfc.cpp",
+        "hal_st21nfc.cc",
+    ],
+    arch: {
+        arm: {
+            cflags: ["-DST_LIB_32"],
+        },
+    },
+}
+
 cc_binary {
     name: "android.hardware.nfc-service.st",
+    defaults: ["android.hardware.nfc-service.st_default"],
     relative_install_path: "hw",
     init_rc: ["nfc-service-default.rc"],
     vintf_fragments: ["nfc-service-default.xml"],
@@ -27,10 +53,22 @@ cc_binary {
     ],
     srcs: [
         "main.cpp",
-        "Nfc.cpp",
-        "hal_st21nfc.cc",
     ],
     arch: {
-        arm: { cflags: ["-DST_LIB_32"] },
-    }
+        arm: {
+            cflags: ["-DST_LIB_32"],
+        },
+    },
+}
+
+cc_fuzz {
+    name: "nfc_service_fuzzer",
+    defaults: [
+        "android.hardware.nfc-service.st_default",
+        "service_fuzzer_defaults",
+    ],
+    srcs: [
+        "fuzzer/NfcServiceFuzzer.cpp",
+    ],
+    vendor: true,
 }
