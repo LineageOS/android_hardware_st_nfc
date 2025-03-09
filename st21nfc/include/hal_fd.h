@@ -42,6 +42,15 @@ typedef struct FWInfo {
   uint8_t chipProdType;
 } FWInfo;
 
+
+/*
+ *Structure containing capabilities
+ */
+typedef struct FWCap {
+  uint8_t ObserveMode;
+
+} FWCap;
+
 typedef enum {
   //  HAL_FD_STATE_GET_ATR,
   HAL_FD_STATE_AUTHENTICATE,
@@ -93,4 +102,5 @@ void ApplyUwbParamHandler(HALHANDLE mHalHandle, uint16_t data_len,
 void resetHandlerState();
 bool ft_CheckUWBConf() ;
 FWInfo* hal_fd_getFwInfo();
+FWCap* hal_fd_getFwCap();
 #endif /* HAL_FD_H_ */

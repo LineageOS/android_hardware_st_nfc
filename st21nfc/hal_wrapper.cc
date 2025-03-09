@@ -205,9 +205,8 @@ void hal_wrapper_set_observer_mode(uint8_t enable) {
   mObserverMode = enable;
   mObserverRsp = true;
 }
-void hal_wrapper_get_observer_mode() {
-  mObserverRsp = true;
-}
+void hal_wrapper_get_observer_mode() { mObserverRsp = true; }
+
 void hal_wrapper_update_complete() {
   STLOG_HAL_V("%s ", __func__);
   mHalWrapperCallback(HAL_NFC_OPEN_CPLT_EVT, HAL_NFC_STATUS_OK);
@@ -523,7 +522,8 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
     case HAL_WRAPPER_STATE_READY:  // 5
       STLOG_HAL_V("%s - mHalWrapperState = HAL_WRAPPER_STATE_READY", __func__);
       if (mObserverRsp) {
-        if ((p_data[0] == 0x40) && (p_data[1] == 0x02)) {
+        if (((p_data[0] == 0x41) && (p_data[1] == 0x16)) ||
+            ((p_data[0] == 0x40) && (p_data[1] == 0x02))) {
           uint8_t rsp_status = p_data[3];
           mObserverRsp = false;
           p_data[0] = 0x4f;
@@ -532,21 +532,32 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
           p_data[3] = 0x02;
           p_data[4] = rsp_status;
           data_len = 0x5;
-        } else if ((p_data[0] == 0x40) && (p_data[1] == 0x03) && (data_len > 7)) {
-            uint8_t rsp_status = p_data[3];
-            mObserverRsp = false;
-            if (p_data[7] != mObserverMode) {
-                STLOG_HAL_E("mObserverMode got out of sync");
-                mObserverMode = p_data[7];
+        } else if (((p_data[0] == 0x41) && (p_data[1] == 0x17) &&
+                    (data_len > 4)) ||
+                   ((p_data[0] == 0x40) && (p_data[1] == 0x03) &&
+                    (data_len > 7))) {
+          uint8_t rsp_status = p_data[3];
+          mObserverRsp = false;
+          if (hal_fd_getFwCap()->ObserveMode == 2) {
+            if (p_data[4] != mObserverMode) {
+              STLOG_HAL_E("mObserverMode got out of sync");
+              mObserverMode = p_data[4];
             }
-            p_data[0] = 0x4f;
-            p_data[1] = 0x0c;
-            p_data[2] = 0x03;
-            p_data[3] = 0x04;
-            p_data[4] = rsp_status;
-            p_data[5] =  p_data[7];
-            data_len = 0x6;
+            p_data[5] = p_data[4];
+          } else {
+            if (p_data[7] != mObserverMode) {
+              STLOG_HAL_E("mObserverMode got out of sync");
+              mObserverMode = p_data[7];
+            }
+            p_data[5] = p_data[7];
           }
+          p_data[0] = 0x4f;
+          p_data[1] = 0x0c;
+          p_data[2] = 0x03;
+          p_data[3] = 0x04;
+          p_data[4] = rsp_status;
+          data_len = 0x6;
+        }
       }
       if (!((p_data[0] == 0x60) && (p_data[3] == 0xa0))) {
         if (mHciCreditLent && (p_data[0] == 0x60) && (p_data[1] == 0x06)) {
@@ -617,9 +628,10 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
             mTimerStarted = false;
           }
         } else if (p_data[0] == 0x60 && p_data[1] == 0x00) {
+          STLOG_HAL_E("%s - Reset trigger from 0x%x to 0x0", __func__, p_data[3]);
           p_data[3] = 0x0;  // Only reset trigger that should be received in
                             // HAL_WRAPPER_STATE_READY is unreocoverable error.
-
+          mHalWrapperState = HAL_WRAPPER_STATE_RECOVERY;
         } else if (data_len >= 4 && p_data[0] == 0x60 && p_data[1] == 0x07) {
           if (p_data[3] == 0xE1) {
             // Core Generic Error - Buffer Overflow Ntf - Restart all
@@ -631,6 +643,7 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
             p_data[4] = 0x00;
             p_data[5] = 0x00;
             data_len = 0x6;
+            mHalWrapperState = HAL_WRAPPER_STATE_RECOVERY;
           } else if (p_data[3] == 0xE6) {
             unsigned long hal_ctrl_clk = 0;
             GetNumValue(NAME_STNFC_CONTROL_CLK, &hal_ctrl_clk,
@@ -645,6 +658,7 @@ void halWrapperDataCallback(uint16_t data_len, uint8_t* p_data) {
               p_data[4] = 0x00;
               p_data[5] = 0x00;
               data_len = 0x6;
+              mHalWrapperState = HAL_WRAPPER_STATE_RECOVERY;
             }
           } else if (p_data[3] == 0xA1) {
             if (mFieldInfoTimerStarted) {
@@ -752,7 +766,7 @@ static void halWrapperCallback(uint8_t event, __attribute__((unused))uint8_t eve
 
     case HAL_WRAPPER_STATE_OPEN:
       if (event == HAL_WRAPPER_TIMEOUT_EVT) {
-        STLOG_HAL_D("NFC-NCI HAL: %s  Timeout accessing the CLF.", __func__);
+        STLOG_HAL_E("NFC-NCI HAL: %s  Timeout accessing the CLF.", __func__);
         HalSendDownstreamStopTimer(mHalHandle);
         I2cRecovery();
         abort(); // TODO: fix it when we have a better recovery method.

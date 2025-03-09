@@ -98,7 +98,7 @@ static void* I2cWorkerThread(void* arg)
 
         if (-1 == poll_status) {
             STLOG_HAL_E("error in poll call\n");
-            return false;
+            return 0;
         }
 
         if (event_table[0].revents & POLLIN) {

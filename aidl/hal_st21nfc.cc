@@ -30,6 +30,7 @@
 #include "hal_config.h"
 #include "halcore.h"
 #include "st21nfc_dev.h"
+#include "hal_fd.h"
 
 #if defined(ST_LIB_32)
 #define VENDOR_LIB_PATH "/vendor/lib/"
@@ -312,6 +313,18 @@ int StNfc_hal_open(nfc_stack_callback_t* p_cback,
 int StNfc_hal_write(uint16_t data_len, const uint8_t* p_data) {
   STLOG_HAL_D("HAL st21nfc: %s", __func__);
 
+  uint8_t NCI_ANDROID_PASSIVE_OBSERVER_PREFIX[] = {0x2f, 0x0c, 0x02, 0x02};
+  uint8_t NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX[] = {0x2f, 0x0c, 0x01, 0x4};
+  uint8_t RF_GET_LISTEN_OBSERVE_MODE_STATE[5] = {0x21, 0x17, 0x00};
+  uint8_t RF_SET_LISTEN_OBSERVE_MODE_STATE[4] = {0x21, 0x16, 0x01, 0x0};
+  uint8_t CORE_GET_CONFIG_OBSERVER[5] = {0x20, 0x03, 0x02, 0x01, 0xa3};
+  uint8_t CORE_SET_CONFIG_OBSERVER[7] = {0x20, 0x02, 0x04, 0x01,
+                                         0xa3, 0x01, 0x00};
+  uint8_t* mGetObserve = CORE_GET_CONFIG_OBSERVER;
+  uint8_t mGetObserve_size = 5;
+  uint8_t* mSetObserve = CORE_SET_CONFIG_OBSERVER;
+  uint8_t mSetObserve_size = 7;
+  uint8_t mTechObserved = 0x0;
   /* check if HAL is closed */
   int ret = (int)data_len;
   (void)pthread_mutex_lock(&hal_mtx);
@@ -324,26 +337,38 @@ int StNfc_hal_write(uint16_t data_len, const uint8_t* p_data) {
     return ret;
   }
 
-  uint8_t NCI_ANDROID_PASSIVE_OBSERVER_PREFIX[] = {0x2f, 0x0c, 0x02, 0x02};
-  uint8_t NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX[] = {0x2f, 0x0c, 0x01, 0x4};
-  if (data_len == 4 && !memcmp(p_data, NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX,
-                               sizeof(NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX))) {
-    uint8_t CORE_GET_CONFIG_OBSERVER[5] = {0x20, 0x03, 0x02, 0x01, 0xa3};
+  if (data_len == 4 &&
+      !memcmp(p_data, NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX,
+              sizeof(NCI_QUERY_ANDROID_PASSIVE_OBSERVER_PREFIX))) {
     hal_wrapper_get_observer_mode();
-    if (!HalSendDownstream(dev.hHAL, CORE_GET_CONFIG_OBSERVER, 5)) {
+    if (hal_fd_getFwCap()->ObserveMode == 2) {
+      mGetObserve = RF_GET_LISTEN_OBSERVE_MODE_STATE;
+      mGetObserve_size = 3;
+    }
+    if (!HalSendDownstream(dev.hHAL, mGetObserve, mGetObserve_size)) {
       STLOG_HAL_E("HAL st21nfc %s  SendDownstream failed", __func__);
       (void)pthread_mutex_unlock(&hal_mtx);
       return 0;
     }
   }
 
-  else if (data_len == 5 && !memcmp(p_data, NCI_ANDROID_PASSIVE_OBSERVER_PREFIX,
-                               sizeof(NCI_ANDROID_PASSIVE_OBSERVER_PREFIX))) {
-    uint8_t CORE_SET_CONFIG_OBSERVER[7] = {0x20, 0x02, 0x04, 0x01,
-                                           0xa3, 0x01, p_data[4]};
+  else if (data_len == 5 &&
+           !memcmp(p_data, NCI_ANDROID_PASSIVE_OBSERVER_PREFIX,
+                   sizeof(NCI_ANDROID_PASSIVE_OBSERVER_PREFIX))) {
+    if (hal_fd_getFwCap()->ObserveMode == 2) {
+      mSetObserve = RF_SET_LISTEN_OBSERVE_MODE_STATE;
+      mSetObserve_size = 4;
+      if (p_data[4]) {
+        mTechObserved = 0x7;
+      }
+      mSetObserve[3] = mTechObserved;
+      hal_wrapper_set_observer_mode(mTechObserved);
+    } else {
+      mSetObserve[6] = p_data[4];
+      hal_wrapper_set_observer_mode(p_data[4]);
+    }
 
-    hal_wrapper_set_observer_mode(p_data[4]);
-    if (!HalSendDownstream(dev.hHAL, CORE_SET_CONFIG_OBSERVER, 7)) {
+    if (!HalSendDownstream(dev.hHAL, mSetObserve, mSetObserve_size)) {
       STLOG_HAL_E("HAL st21nfc %s  SendDownstream failed", __func__);
       (void)pthread_mutex_unlock(&hal_mtx);
       return 0;

@@ -27,6 +27,9 @@
 #include "halcore.h"
 /* Initialize fw info structure pointer used to access fw info structure */
 FWInfo *mFWInfo = NULL;
+
+FWCap *mFWCap = NULL;
+
 FILE *mFwFileBin;
 FILE *mCustomFileBin;
 fpos_t mPos;
@@ -236,6 +239,15 @@ int hal_fd_init() {
 
   memset(mFWInfo, 0, sizeof(FWInfo));
 
+  // Initializing structure holding FW Capabilities
+  mFWCap = (FWCap *)malloc(sizeof(FWCap));
+
+  if (mFWCap == NULL) {
+    result = 0;
+  }
+
+  memset(mFWCap, 0, sizeof(FWCap));
+
   mFwFileBin = NULL;
   mCustomFileBin = NULL;
 
@@ -337,6 +349,11 @@ FWInfo* hal_fd_getFwInfo() {
    return mFWInfo;
 }
 
+FWCap* hal_fd_getFwCap() {
+  STLOG_HAL_D("  %s -enter", __func__);
+   return mFWCap;
+}
+
 /**
  * Send a HW reset and decode NCI_CORE_RESET_NTF information
  * @param pHwVersion is used to return HW version, part of NCI_CORE_RESET_NTF
@@ -367,7 +384,9 @@ uint8_t ft_cmd_HwReset(uint8_t *pdata, uint8_t *clf_mode) {
     mFWInfo->chipFwVersion =
         (pdata[10] << 24) | (pdata[11] << 16) | (pdata[12] << 8) | pdata[13];
     STLOG_HAL_D("   FwVersion = 0x%08X", mFWInfo->chipFwVersion);
-
+    uint8_t FWVersionMajor = (uint8_t)(hal_fd_getFwInfo()->chipFwVersion >> 24);
+    uint8_t FWVersionMinor =
+        (uint8_t)((hal_fd_getFwInfo()->chipFwVersion & 0x00FF0000) >> 16);
     /* retrieve Loader Version from NCI_CORE_RESET_NTF */
     mFWInfo->chipLoaderVersion =
         (pdata[14] << 16) | (pdata[15] << 8) | pdata[16];
@@ -459,6 +478,16 @@ uint8_t ft_cmd_HwReset(uint8_t *pdata, uint8_t *clf_mode) {
     mUwbConfigNeeded = true;
   }
 
+  uint8_t FWVersionMajor = (uint8_t)(hal_fd_getFwInfo()->chipFwVersion >> 24);
+  uint8_t FWVersionMinor =
+        (uint8_t)((hal_fd_getFwInfo()->chipFwVersion & 0x00FF0000) >> 16);
+
+  if (hal_fd_getFwInfo()->chipHwVersion == HW_ST54L &&
+      (FWVersionMajor >= 0x2) && (FWVersionMinor >= 0x5)) {
+    mFWCap->ObserveMode = 0x2;
+  } else {
+    mFWCap->ObserveMode = 0x1;
+  }
   return result;
 } /* ft_cmd_HwReset */
 

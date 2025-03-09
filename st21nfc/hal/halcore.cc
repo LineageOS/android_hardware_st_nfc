@@ -114,6 +114,8 @@ void HalCoreCallback(void* context, uint32_t event, const void* d,
       DispHal("TX DATA", (data), length);
       if (length == 4 && !memcmp(data, NCI_ANDROID_GET_CAPS,
            sizeof(NCI_ANDROID_GET_CAPS))) {
+          NCI_ANDROID_GET_CAPS_RSP[10] = hal_fd_getFwCap()->ObserveMode;
+
         dev->p_data_cback(NCI_ANDROID_GET_CAPS_RSP[2]+3, NCI_ANDROID_GET_CAPS_RSP);
       } else {
         // Send write command to IO thread

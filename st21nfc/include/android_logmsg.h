@@ -74,7 +74,7 @@ extern int GetStrValue(const char* name, char* pValue, unsigned long l);
   {                                                         \
     if ((hal_trace_level & STNFC_TRACE_LEVEL_MASK) >=       \
         STNFC_TRACE_LEVEL_VERBOSE)                          \
-      LOG_PRI(ANDROID_LOG_DEBUG, HAL_LOG_TAG, __VA_ARGS__); \
+      LOG_PRI(ANDROID_LOG_VERBOSE, HAL_LOG_TAG, __VA_ARGS__); \
   }
 #define STLOG_HAL_D(...)                                                       \
   {                                                                            \
