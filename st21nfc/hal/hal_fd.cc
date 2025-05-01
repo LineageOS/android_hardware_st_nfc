@@ -35,6 +35,7 @@ FWCap* mFWCap = NULL;
 
 FILE* mFwFileBin;
 FILE* mCustomFileBin;
+char* mCustomFileBuffer;
 fpos_t mPos;
 fpos_t mPosInit;
 uint8_t mBinData[260];
@@ -152,6 +153,124 @@ static int GetProdType(uint8_t* UserKey) {
   return (-1);
 }
 
+void hal_fd_parse_custom_file_txt_line(size_t* fileBinSize, char* line) {
+  const char* direct_ctrl_skip = "NCI_DIRECT_CTRL,2F,02,";
+  const char* direct_ctrl = "NCI_DIRECT_CTRL";
+  const char* send_prop_skip = "NCI_SEND_PROP,0F,02,";
+  const char* send_prop = "NCI_SEND_PROP";
+
+  int prefixLen = 0;
+  if (strncmp(line, send_prop, strlen(send_prop)) == 0) {
+    prefixLen = strlen(send_prop_skip);
+  } else if (strncmp(line, direct_ctrl, strlen(direct_ctrl)) == 0) {
+    prefixLen = strlen(direct_ctrl_skip);
+  }
+
+  if (!prefixLen) {
+    STLOG_HAL_E("Skip FW config line: %s\n", line);
+    return;
+  }
+
+  line += prefixLen;
+  if (*line == '\0') return;
+
+  size_t newFileBinSize = *fileBinSize;
+  mCustomFileBuffer[newFileBinSize++] = 0x2f;
+  mCustomFileBuffer[newFileBinSize++] = 0x02;
+  size_t lenOffset = newFileBinSize++;
+
+  size_t payloadLen = 0;
+  char n[3] = {0};
+  int nidx = 0;
+
+  for (char* p = line; *p; ++p) {
+    if (isspace(*p)) {
+      if (nidx != 0) {
+        STLOG_HAL_E("FW config hex pair incomplete: %s\n", line);
+        return;
+      }
+
+      continue;
+    }
+
+    if (!isxdigit(*p)) {
+      STLOG_HAL_D("Skip FW config line: %s\n", line);
+      return;
+    }
+
+    n[nidx++] = *p;
+    if (nidx == 2) {
+      int value = (int)strtol(n, NULL, 16);
+      mCustomFileBuffer[newFileBinSize++] = value;
+      nidx = 0;
+      payloadLen++;
+    }
+  }
+
+  if (nidx != 0) {
+    STLOG_HAL_E("FW config line incomplete: %s\n", line);
+    return;
+  }
+
+  if (payloadLen > 0xff) {
+    STLOG_HAL_E("FW config line too long: %s\n", line);
+    return;
+  }
+
+  mCustomFileBuffer[lenOffset] = payloadLen;
+
+  *fileBinSize = newFileBinSize;
+}
+
+void hal_fd_convert_custom_file_txt(FILE* customFileTxt) {
+  size_t fileBinSize = 0;
+  char buffer[1024];
+  char* line;
+
+  line = fgets(buffer, sizeof(buffer), customFileTxt);
+  if (!line) {
+    STLOG_HAL_E("%s - FW config text file too short\n", __func__);
+    return;
+  }
+
+  unsigned int crc;
+  if (sscanf(line, "REM Script CRC is %4x", &crc) != 1 &&
+      sscanf(line, "REM CONFIG CRC IS %4x", &crc) != 1) {
+    STLOG_HAL_E("%s - FW config CRC invalid\n", __func__);
+    return;
+  }
+
+  fseek(customFileTxt, 0, SEEK_END);
+  size_t fileBinMaxSize = ftell(customFileTxt);
+  fseek(customFileTxt, 0, SEEK_SET);
+
+  mCustomFileBuffer = (char*)calloc(fileBinMaxSize, sizeof(*mCustomFileBuffer));
+  if (!mCustomFileBuffer) {
+    STLOG_HAL_E("%s - Failed to allocate FW config binary\n", __func__);
+    return;
+  }
+
+  mCustomFileBuffer[fileBinSize++] = (crc >> 8) & 0xff;
+  mCustomFileBuffer[fileBinSize++] = crc & 0xff;
+
+  while ((line = fgets(buffer, sizeof(buffer), customFileTxt))) {
+    hal_fd_parse_custom_file_txt_line(&fileBinSize, line);
+  }
+
+  mCustomFileBin = fmemopen(mCustomFileBuffer, fileBinSize, "r");
+}
+
+void hal_fd_convert_custom_file_path(char* ConfPath) {
+  FILE* customFileTxt = fopen((char*)ConfPath, "r");
+  if (!customFileTxt) {
+    return;
+  }
+
+  hal_fd_convert_custom_file_txt(customFileTxt);
+
+  fclose(customFileTxt);
+}
+
 /**
  * Send a HW reset and decode NCI_CORE_RESET_NTF information
  * @param pHwVersion is used to return HW version, part of NCI_CORE_RESET_NTF
@@ -265,6 +384,7 @@ int hal_fd_init() {
 
   mFwFileBin = NULL;
   mCustomFileBin = NULL;
+  mCustomFileBuffer = NULL;
 
   // Check if FW patch binary file is present
   // If not, get recovery FW patch file
@@ -324,7 +444,10 @@ int hal_fd_init() {
     }
   }
 
-  if ((mCustomFileBin = fopen((char*)ConfPath, "r")) == NULL) {
+  hal_fd_convert_custom_file_path(ConfPath);
+
+  if (mCustomFileBin == NULL &&
+      (mCustomFileBin = fopen((char*)ConfPath, "r")) == NULL) {
     STLOG_HAL_D("%s - st21nfc custom configuration not detected\n", __func__);
   } else {
     STLOG_HAL_D("%s - %s file detected\n", __func__, ConfPath);
@@ -356,6 +479,10 @@ void hal_fd_close() {
   if (mCustomFileBin != NULL) {
     fclose(mCustomFileBin);
     mCustomFileBin = NULL;
+  }
+  if (mCustomFileBuffer != NULL) {
+    free(mCustomFileBuffer);
+    mCustomFileBuffer = NULL;
   }
 }
 
