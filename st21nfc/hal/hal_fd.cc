@@ -32,6 +32,7 @@ FWCap *mFWCap = NULL;
 
 FILE *mFwFileBin;
 FILE *mCustomFileBin;
+char *mCustomFileBuffer;
 fpos_t mPos;
 fpos_t mPosInit;
 uint8_t mBinData[260];
@@ -150,6 +151,111 @@ static int GetProdType(uint8_t* UserKey) {
   return (-1);
 }
 
+void hal_fd_parse_custom_file_txt_line(FILE *fileBin, char *line) {
+  const char *direct_ctrl_skip = "NCI_DIRECT_CTRL,2F,02,";
+  const char *direct_ctrl = "NCI_DIRECT_CTRL";
+  const char *send_prop_skip = "NCI_SEND_PROP,0F,02,";
+  const char *send_prop = "NCI_SEND_PROP";
+
+  int prefixLen = 0;
+  if (strncmp(line, send_prop, strlen(send_prop)) == 0) {
+    prefixLen = strlen(send_prop_skip);
+  } else if (strncmp(line, direct_ctrl, strlen(direct_ctrl)) == 0) {
+    prefixLen = strlen(direct_ctrl_skip);
+  }
+
+  if (!prefixLen) {
+    STLOG_HAL_E("%s - Skip FW config text line: %s\n", __func__, line);
+    return;
+  }
+
+  line += prefixLen;
+  if (*line == '\0') return;
+
+  off_t startOffset = ftello(fileBin);
+
+  fputc(0x2f, fileBin);
+  fputc(0x02, fileBin);
+
+  off_t lenOffset = ftello(fileBin);
+  fputc(0xdb, fileBin);
+
+  size_t payloadLen = 0;
+  char n[3] = {0};
+  int nidx = 0;
+
+  for (char *p = line; *p; ++p) {
+    if (isspace(*p)) continue;
+
+    if (!isxdigit(*p)) {
+      ftruncate(fileno(fileBin), startOffset);
+      STLOG_HAL_E("%s - Skip FW config text line: %s\n", __func__, line);
+      return;
+    }
+
+    n[nidx++] = *p;
+    if (nidx == 2) {
+      int value = (int)strtol(n, NULL, 16);
+      fputc(value, fileBin);
+      nidx = 0;
+      payloadLen++;
+    }
+  }
+
+  size_t endOffset = ftello(fileBin);
+
+  fseeko(fileBin, lenOffset, SEEK_SET);
+  fputc(payloadLen, fileBin);
+
+  fseeko(fileBin, endOffset, SEEK_SET);
+}
+
+void hal_fd_convert_custom_file_txt(FILE *customFileTxt) {
+  size_t fileBinSize;
+  char buffer[1024];
+  char *line;
+
+  line = fgets(buffer, sizeof(buffer), customFileTxt);
+  if (!line) {
+    STLOG_HAL_E("%s - FW config text file too short\n", __func__);
+    return;
+  }
+
+  unsigned int crc;
+  if (sscanf(line, "REM Script CRC is %4x", &crc) != 1) {
+    STLOG_HAL_E("%s - FW config CRC invalid\n", __func__);
+    return;
+  }
+
+  FILE *fileBin = open_memstream(&mCustomFileBuffer, &fileBinSize);
+  if (!fileBin) {
+    STLOG_HAL_E("%s - Failed to create in-memory FW config binary\n", __func__);
+    return;
+  }
+
+  fputc(crc >> 8, fileBin);
+  fputc(crc, fileBin);
+
+  while ((line = fgets(buffer, sizeof(buffer), customFileTxt))) {
+    hal_fd_parse_custom_file_txt_line(fileBin, line);
+  }
+
+  fclose(fileBin);
+
+  mCustomFileBin = fmemopen(mCustomFileBuffer, fileBinSize, "r");
+}
+
+void hal_fd_convert_custom_file_path(char *ConfPath) {
+  FILE *customFileTxt = fopen((char *)ConfPath, "r");
+  if (!customFileTxt) {
+    return;
+  }
+
+  hal_fd_convert_custom_file_txt(customFileTxt);
+
+  fclose(customFileTxt);
+}
+
 /**
  * Send a HW reset and decode NCI_CORE_RESET_NTF information
  * @param pHwVersion is used to return HW version, part of NCI_CORE_RESET_NTF
@@ -256,6 +362,7 @@ int hal_fd_init() {
 
   mFwFileBin = NULL;
   mCustomFileBin = NULL;
+  mCustomFileBuffer = NULL;
 
   // Check if FW patch binary file is present
   // If not, get recovery FW patch file
@@ -315,7 +422,9 @@ int hal_fd_init() {
     }
   }
 
-  if ((mCustomFileBin = fopen((char *)ConfPath, "r")) == NULL) {
+  hal_fd_convert_custom_file_path(ConfPath);
+
+  if (mCustomFileBin == NULL && (mCustomFileBin = fopen((char *)ConfPath, "r")) == NULL) {
     STLOG_HAL_D("%s - st21nfc custom configuration not detected\n", __func__);
   } else {
     STLOG_HAL_D("%s - %s file detected\n", __func__, ConfPath);
@@ -347,6 +456,10 @@ void hal_fd_close() {
   if (mCustomFileBin != NULL) {
     fclose(mCustomFileBin);
     mCustomFileBin = NULL;
+  }
+  if (mCustomFileBuffer != NULL) {
+    free(mCustomFileBuffer);
+    mCustomFileBuffer = NULL;
   }
 }
 
