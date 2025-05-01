@@ -229,7 +229,14 @@ int hal_fd_init() {
       strcpy(fwConfName, "/st21nfc_conf.bin");
     }
 
-    strcpy(ConfPath, FwPath);
+    if (!GetStrValue(NAME_STNFC_FW_CONF_STORAGE, (char*)ConfPath,
+                     sizeof(ConfPath))) {
+      STLOG_HAL_D(
+          "%s - FW config path not found in conf. use default location %s "
+          "\n",
+          __func__, FwPath);
+      strcpy(ConfPath, FwPath);
+    }
   }
 
   // Getting information about FW patch, if any
