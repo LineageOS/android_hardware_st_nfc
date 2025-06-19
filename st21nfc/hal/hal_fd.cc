@@ -232,7 +232,8 @@ void hal_fd_convert_custom_file_txt(FILE *customFileTxt) {
   }
 
   unsigned int crc;
-  if (sscanf(line, "REM Script CRC is %4x", &crc) != 1) {
+  if (sscanf(line, "REM Script CRC is %4x", &crc) != 1 &&
+      sscanf(line, "REM CONFIG CRC IS %4x", &crc) != 1) {
     STLOG_HAL_E("%s - FW config CRC invalid\n", __func__);
     return;
   }
