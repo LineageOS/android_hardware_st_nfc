@@ -45,9 +45,9 @@ typedef union timestamp_bytes {
   uint8_t ts4;
 } timestamp_bytes;
 
-int notifyPollingLoopFrames(uint8_t *p_data, uint16_t data_len,
-                            uint8_t *bufferToSend);
-uint8_t handlePollingLoopData(uint8_t *tlvBuffer, uint16_t data_len,
-                              uint8_t **NewTlv);
+int notifyPollingLoopFrames(uint8_t* p_data, uint16_t data_len,
+                            uint8_t* bufferToSend);
+uint8_t handlePollingLoopData(uint8_t* tlvBuffer, uint16_t data_len,
+                              uint8_t** NewTlv);
 
 #endif

@@ -78,12 +78,16 @@ uint8_t handlePollingLoopData(uint8_t format, uint8_t* tlvBuffer,
       }
 
       // work-around type-A short frame notification bug
-      if (hal_fd_getFwInfo()->chipHwVersion == HW_ST54J &&
-          (tlvBuffer[2] & 0xF) == 0x01 &&  // short frame
-          tlvBuffer[5] == 0x00 &&          // no error
-          tlvBuffer[6] == 0x0F             // incorrect real size
-      ) {
-        tlv_size = 9;
+      if (hal_fd_getFwInfo() != NULL) {
+        if (hal_fd_getFwInfo()->chipHwVersion == HW_ST54J &&
+            (tlvBuffer[2] & 0xF) == 0x01 &&  // short frame
+            tlvBuffer[5] == 0x00 &&          // no error
+            tlvBuffer[6] == 0x0F             // incorrect real size
+        ) {
+          tlv_size = 9;
+        }
+      } else {
+        return 0;
       }
 
       value_len = tlv_size - 3;

@@ -43,14 +43,14 @@ struct timespec start_tx_data;
 uint8_t NCI_ANDROID_GET_CAPS[] = {0x2f, 0x0c, 0x01, 0x0};
 uint8_t NCI_ANDROID_GET_CAPS_RSP[] = {
     0x4f, 0x0c,
-    0x14,                          // Command length
+    0x14,  // Command length
     0x00, 0x00, 0x00, 0x00,
-    0x05,                          // Nb of capabilities
-    0x00, 0x01, 0x01,              // Passive Observe mode
-    0x01, 0x01, 0x01,              // Polling frame ntf
-    0x03, 0x01, 0x00,              // Autotransact polling loop filter
-    0x04, 0x01, 0x05,              // Nb of max exit frame entries
-    0x05, 0x01, 0x01               // Polling loop annotations
+    0x05,              // Nb of capabilities
+    0x00, 0x01, 0x01,  // Passive Observe mode
+    0x01, 0x01, 0x01,  // Polling frame ntf
+    0x03, 0x01, 0x00,  // Autotransact polling loop filter
+    0x04, 0x01, 0x05,  // Nb of max exit frame entries
+    0x05, 0x01, 0x01   // Polling loop annotations
 };
 
 /**************************************************************************************************
@@ -122,15 +122,17 @@ void HalCoreCallback(void* context, uint32_t event, const void* d,
         NCI_ANDROID_GET_CAPS_RSP[2] = sizeof(NCI_ANDROID_GET_CAPS_RSP) - 3;
         NCI_ANDROID_GET_CAPS_RSP[10] = hal_fd_getFwCap()->ObserveMode;
         NCI_ANDROID_GET_CAPS_RSP[16] = hal_fd_getFwCap()->ExitFrameSupport;
-        uint8_t FWVersionMajor = (uint8_t)(hal_fd_getFwInfo()->chipFwVersion >> 24);
+        uint8_t FWVersionMajor =
+            (uint8_t)(hal_fd_getFwInfo()->chipFwVersion >> 24);
         uint8_t FWVersionMinor =
-          (uint8_t)((hal_fd_getFwInfo()->chipFwVersion & 0x00FF0000) >> 16);
-        // Declare support for reader mode annotation only if fw version >= 2.06.
+            (uint8_t)((hal_fd_getFwInfo()->chipFwVersion & 0x00FF0000) >> 16);
+        // Declare support for reader mode annotation only if fw version
+        // >= 2.06.
         if (hal_fd_getFwInfo()->chipHwVersion == HW_ST54L &&
-          (FWVersionMajor >= 0x2) && (FWVersionMinor >= 0x6)) {
-            NCI_ANDROID_GET_CAPS_RSP[22] = 1;
+            (FWVersionMajor >= 0x2) && (FWVersionMinor >= 0x6)) {
+          NCI_ANDROID_GET_CAPS_RSP[22] = 1;
         } else {
-            NCI_ANDROID_GET_CAPS_RSP[22] = 0;
+          NCI_ANDROID_GET_CAPS_RSP[22] = 0;
         }
 
         dev->p_data_cback(sizeof(NCI_ANDROID_GET_CAPS_RSP),

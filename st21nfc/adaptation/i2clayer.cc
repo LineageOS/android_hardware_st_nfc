@@ -33,6 +33,7 @@
 
 #include "android_logmsg.h"
 #include "hal_config.h"
+#include "hal_event_logger.h"
 #include "halcore.h"
 #include "halcore_private.h"
 
@@ -50,11 +51,13 @@
 #define ST21NFC_CLK_STATE _IOR(ST21NFC_MAGIC, 0x13, unsigned int)
 
 #define LINUX_DBGBUFFER_SIZE 300
+#define I2C_ERROR_COUNT_MAX 50
 
 static int fidI2c = 0;
 static int cmdPipe[2] = {0, 0};
 static int notifyResetRequest = 0;
 static bool recovery_mode = false;
+static uint16_t i2c_error_count = 0;
 
 static struct pollfd event_table[3];
 static pthread_t threadHandle = (pthread_t)NULL;
@@ -93,7 +96,7 @@ static void* I2cWorkerThread(void* arg) {
   STLOG_HAL_D("echo thread started...\n");
   bool readOk = false;
   int eventNum = (notifyResetRequest <= 0) ? 2 : 3;
-  bool resetting= false;
+  bool resetting = false;
 
   do {
     event_table[0].fd = fidI2c;
@@ -169,7 +172,11 @@ static void* I2cWorkerThread(void* arg) {
               bytesRead = i2cRead(fidI2c, buffer + 3, remaining);
             }
             if (bytesRead == remaining) {
-              DispHal("RX DATA", buffer, 3 + bytesRead);
+              if ((buffer[0] == 0x6f) && (buffer[1] == 0x02)) {
+                if (mDisplayFwLog) DispHal("RX DATA", buffer, 3 + bytesRead);
+              } else {
+                DispHal("RX DATA", buffer, 3 + bytesRead);
+              }
               HalSendUpstream(hHAL, buffer, 3 + bytesRead);
             } else {
               readOk = false;
@@ -177,8 +184,16 @@ static void* I2cWorkerThread(void* arg) {
             }
           }
 
+          i2c_error_count = 0;
         } else {
           STLOG_HAL_E("! didn't read 3 requested bytes from i2c\n");
+          if (i2c_error_count < I2C_ERROR_COUNT_MAX) {
+            HalEventLogger::getInstance().log()
+                << "! didn't read 3 requested bytes from i2c, bytesRead:"
+                << bytesRead << " errno " << errno
+                << " count:" << i2c_error_count << std::endl;
+            i2c_error_count++;
+          }
         }
 
         readOk = false;
@@ -232,9 +247,9 @@ static void* I2cWorkerThread(void* arg) {
       if (byte < 10) {
         reset[byte] = '\0';
       }
-      if (byte > 0 && reset[0] == '1' && resetting== false) {
+      if (byte > 0 && reset[0] == '1' && resetting == false) {
         STLOG_HAL_E("trigger NFCC reset.. \n");
-        resetting= true;
+        resetting = true;
         i2cResetPulse(fidI2c);
       }
     }

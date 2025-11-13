@@ -37,7 +37,7 @@ cc_binary {
     defaults: ["android.hardware.nfc-service.st_default"],
     relative_install_path: "hw",
     init_rc: ["nfc-service-default.rc"],
-    vintf_fragments: ["nfc-service-default.xml"],
+    vintf_fragment_modules: ["nfc-service-default.xml"],
     vendor: true,
     cflags: [
         "-Wall",
@@ -61,6 +61,12 @@ cc_binary {
     },
 }
 
+vintf_fragment {
+    name: "nfc-service-default.xml",
+    src: "nfc-service-default.xml",
+    vendor: true,
+}
+
 cc_fuzz {
     name: "nfc_service_fuzzer",
     defaults: [
@@ -71,13 +77,6 @@ cc_fuzz {
         "fuzzer/NfcServiceFuzzer.cpp",
     ],
     vendor: true,
-}
-
-prebuilt_etc {
-    name: "nfc-service-default.xml",
-    src: "nfc-service-default.xml",
-    sub_dir: "vintf",
-    installable: false,
 }
 
 genrule {
@@ -105,7 +104,6 @@ apex {
     binaries: ["android.hardware.nfc-service.st"],
     prebuilts: [
         "com.google.android.hardware.nfc.st.rc",
-        "nfc-service-default.xml",
         "android.hardware.nfc.prebuilt.xml",
         "android.hardware.nfc.hce.prebuilt.xml",
         "android.hardware.nfc.hcef.prebuilt.xml",

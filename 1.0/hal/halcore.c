@@ -277,8 +277,8 @@ void HalDestroy(HALHANDLE hHAL) {
  * @param hHAL HAL handle
  * @param data Data message
  * @param size Message size
- */ bool HalSendDownstream(HALHANDLE hHAL, const uint8_t* data, size_t size)
-{
+ */
+bool HalSendDownstream(HALHANDLE hHAL, const uint8_t* data, size_t size) {
   // Send an NCI frame downstream. will
   HalInstance* inst = (HalInstance*)hHAL;
 
@@ -316,9 +316,9 @@ void HalDestroy(HALHANDLE hHAL) {
  * @param hHAL HAL handle
  * @param data Data message
  * @param size Message size
- */ bool HalSendDownstreamTimer(HALHANDLE hHAL, const uint8_t* data,
-                                size_t size, uint8_t duration)
-{
+ */
+bool HalSendDownstreamTimer(HALHANDLE hHAL, const uint8_t* data, size_t size,
+                            uint8_t duration) {
   // Send an NCI frame downstream. will
   HalInstance* inst = (HalInstance*)hHAL;
 
