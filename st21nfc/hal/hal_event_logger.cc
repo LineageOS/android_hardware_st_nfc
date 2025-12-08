@@ -31,11 +31,14 @@
 #define HAL_LOG_FILE_SIZE 32 * 1024 * 1024
 #define HAL_MEM_BUFFER_SIZE 256 * 1024
 
+TimerActivity TimerAct;
+
 HalEventLogger& HalEventLogger::getInstance() {
   static HalEventLogger nfc_event_eventLogger;
   return nfc_event_eventLogger;
 }
 HalEventLogger& HalEventLogger::log() {
+  std::lock_guard<std::mutex> lock(mMutex);
   struct timespec tv;
   clock_gettime(CLOCK_REALTIME, &tv);
   time_t rawtime = tv.tv_sec;
@@ -83,9 +86,12 @@ void HalEventLogger::initialize() {
   }
   EventFilePath = HalLogPath;
   EventFilePath += "/hal_event_log.txt";
+
+  store_timer_activity("none", 0);
 }
 
 void HalEventLogger::store_log() {
+  std::lock_guard<std::mutex> lock(mMutex);
   LOG(DEBUG) << __func__;
   if (!logging_enabled) return;
   std::ofstream logFile;
@@ -107,6 +113,7 @@ void HalEventLogger::store_log() {
 }
 
 void HalEventLogger::dump_log(int fd) {
+  std::lock_guard<std::mutex> lock(mMutex);
   LOG(DEBUG) << __func__;
   if (!logging_enabled) return;
   std::ostringstream oss;
@@ -131,4 +138,9 @@ void HalEventLogger::dump_log(int fd) {
   ::android::base::WriteStringToFd(oss.str(), fd);
   dprintf(fd, "===== Nfc HAL Event Log v1 =====\n");
   fsync(fd);
+}
+
+void HalEventLogger::store_timer_activity(std::string activity, uint32_t duration) {
+  TimerAct.activity = activity;
+  TimerAct.duration = duration;
 }

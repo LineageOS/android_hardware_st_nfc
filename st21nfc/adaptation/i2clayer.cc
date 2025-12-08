@@ -17,6 +17,8 @@
  *
  ----------------------------------------------------------------------*/
 
+#include "i2clayer.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -28,7 +30,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
 #include <unistd.h>
 
 #include "android_logmsg.h"
@@ -36,8 +37,6 @@
 #include "hal_event_logger.h"
 #include "halcore.h"
 #include "halcore_private.h"
-
-#define ST21NFC_MAGIC 0xEA
 
 #define ST21NFC_GET_WAKEUP _IOR(ST21NFC_MAGIC, 0x01, unsigned int)
 #define ST21NFC_PULSE_RESET _IOR(ST21NFC_MAGIC, 0x02, unsigned int)
@@ -48,12 +47,11 @@
 #define ST21NFC_RECOVERY _IOR(ST21NFC_MAGIC, 0x08, unsigned int)
 #define ST21NFC_CLK_ENABLE _IOR(ST21NFC_MAGIC, 0x11, unsigned int)
 #define ST21NFC_CLK_DISABLE _IOR(ST21NFC_MAGIC, 0x12, unsigned int)
-#define ST21NFC_CLK_STATE _IOR(ST21NFC_MAGIC, 0x13, unsigned int)
 
 #define LINUX_DBGBUFFER_SIZE 300
 #define I2C_ERROR_COUNT_MAX 50
 
-static int fidI2c = 0;
+int fidI2c = 0;
 static int cmdPipe[2] = {0, 0};
 static int notifyResetRequest = 0;
 static bool recovery_mode = false;

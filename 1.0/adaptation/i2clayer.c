@@ -17,6 +17,8 @@
  *
  ----------------------------------------------------------------------*/
 #define _GNU_SOURCE
+#include "i2clayer.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -28,14 +30,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
 #include <unistd.h>
 
 #include "android_logmsg.h"
 #include "halcore.h"
 #include "halcore_private.h"
-
-#define ST21NFC_MAGIC 0xEA
 
 #define ST21NFC_GET_WAKEUP _IOR(ST21NFC_MAGIC, 0x01, unsigned int)
 #define ST21NFC_PULSE_RESET _IOR(ST21NFC_MAGIC, 0x02, unsigned int)
@@ -46,7 +45,7 @@
 
 #define LINUX_DBGBUFFER_SIZE 300
 
-static int fidI2c = 0;
+int fidI2c = 0;
 static int cmdPipe[2] = {0, 0};
 
 static struct pollfd event_table[2];

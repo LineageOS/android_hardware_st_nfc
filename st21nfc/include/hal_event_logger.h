@@ -17,6 +17,7 @@
 #pragma once
 
 #include <fstream>
+#include <mutex>
 #include <sstream>
 #include <string>
 
@@ -27,13 +28,16 @@ class HalEventLogger {
   void dump_log(int fd);
   void initialize();
   void store_log();
+  void store_timer_activity(std::string activity, uint32_t duration);
 
   template <typename T>
   HalEventLogger& operator<<(const T& value) {
+    std::lock_guard<std::mutex> lock(mMutex);
     ss << value;
     return *this;
   }
   HalEventLogger& operator<<(std::ostream& (*manip)(std::ostream&)) {
+    std::lock_guard<std::mutex> lock(mMutex);
     if (manip == static_cast<std::ostream& (*)(std::ostream&)>(std::endl)) {
       ss << std::endl;
     }
@@ -47,4 +51,12 @@ class HalEventLogger {
   std::stringstream ss;
   bool logging_enabled;
   std::string EventFilePath;
+  std::mutex mMutex;
 };
+
+struct TimerActivity {
+  std::string activity;
+  uint32_t duration;
+};
+
+extern TimerActivity TimerAct;
