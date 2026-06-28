@@ -167,7 +167,7 @@ void hal_fd_parse_custom_file_txt_line(size_t* fileBinSize, char* line) {
   }
 
   if (!prefixLen) {
-    STLOG_HAL_E("Skip FW config line: %s\n", line);
+    STLOG_HAL_V("Skip FW config line: %s\n", line);
     return;
   }
 
